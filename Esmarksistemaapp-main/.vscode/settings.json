@@ -1,0 +1,7 @@
+{
+    "git.ignoreLimitWarning": true,
+    "workbench.editorLargeFileConfirmation": 20000000,
+    "cSpell.words": [
+        "seguridad"
+    ]
+}

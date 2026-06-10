@@ -1,0 +1,434 @@
+// 🧮 Calculator Service
+// Calculadora de precios para PVC, Sticker, Banner y más
+// Basado en el sistema de pricing de Electron
+
+import 'dart:math';
+
+class CalculatorService {
+  // ==================== CONSTANTES DE PRECIOS ====================
+  
+  // Precios base por pulgada cuadrada según el tipo de producto
+  static const double _pvcPricePerSqInch = 0.025; // L. 0.025 por pulgada²
+  static const double _stickerPricePerSqInch = 0.015; // L. 0.015 por pulgada²
+  static const double _bannerPricePerSqInch = 0.012; // L. 0.012 por pulgada²
+  
+  // Grosores de PVC disponibles (mm -> precio adicional por pulgada²)
+  static const Map<int, double> _pvcThicknessPrices = {
+    2: 0.010,  // 2mm - económico
+    3: 0.015,  // 3mm - estándar
+    5: 0.025,  // 5mm - resistente
+    8: 0.040,  // 8mm - premium
+  };
+  
+  // Costos de mano de obra para PVC
+  static const double _pvcLaborWithoutBase = 50.0; // Sin base
+  static const double _pvcLaborWithBase = 80.0;   // Con base
+  
+  // Costo por ojete
+  static const double _ojeteCost = 10.0; // L. 10 por ojete
+  
+  // Costos de diseño para prendas
+  static const Map<String, double> _designCosts = {
+    'basico': 50.0,
+    'intermedio': 100.0,
+    'avanzado': 200.0,
+  };
+  
+  // Costo adicional por vinil
+  static const double _vinilAdditionalCost = 30.0;
+  
+  // ==================== CÁLCULO PVC ====================
+  
+  /// Calcula el precio de un producto PVC
+  /// [widthM] - Ancho en metros
+  /// [heightM] - Alto en metros
+  /// [quantity] - Cantidad de unidades
+  /// [thicknessMM] - Grosor del PVC en mm
+  /// [laborMode] - Modo de mano de obra: 'sin-base', 'con-base', 'manual'
+  /// [manualLabor] - Precio manual de mano de obra (si laborMode es 'manual')
+  static PVCPriceResult calculatePVCPrice({
+    required double widthM,
+    required double heightM,
+    required int quantity,
+    required int thicknessMM,
+    String laborMode = 'sin-base',
+    double manualLabor = 0.0,
+  }) {
+    // Calcular área en metros cuadrados
+    final areaM2 = widthM * heightM;
+    
+    // Convertir a pulgadas cuadradas (1 m² = 1550.0031 pulg²)
+    final areaSqInch = areaM2 * 1550.0031;
+    
+    // Precio del PVC según grosor
+    final thicknessPrice = _pvcThicknessPrices[thicknessMM] ?? 0.015;
+    final pvcPrice = areaSqInch * (_pvcPricePerSqInch + thicknessPrice);
+    
+    // Precio del sticker (mismo tamaño que el PVC)
+    final stickerPrice = areaSqInch * _stickerPricePerSqInch;
+    
+    // Mano de obra
+    double laborCost = 0.0;
+    switch (laborMode) {
+      case 'con-base':
+        laborCost = _pvcLaborWithBase;
+        break;
+      case 'manual':
+        laborCost = manualLabor;
+        break;
+      case 'sin-base':
+      default:
+        laborCost = _pvcLaborWithoutBase;
+        break;
+    }
+    
+    // Total por unidad
+    final totalPerUnit = pvcPrice + stickerPrice + laborCost;
+    final totalPrice = totalPerUnit * quantity;
+    
+    // Determinar el rango de sticker aplicado
+    final stickerRange = _getStickerRange(areaSqInch);
+    
+    return PVCPriceResult(
+      widthMeters: widthM,
+      heightMeters: heightM,
+      areaSqInch: areaSqInch,
+      areaM2: areaM2,
+      thicknessMM: thicknessMM,
+      pvcTotalPrice: pvcPrice * quantity,
+      stickerTotalPrice: stickerPrice * quantity,
+      laborTotalPrice: laborCost * quantity,
+      pricePerUnit: totalPerUnit,
+      totalPrice: totalPrice,
+      stickerRangeApplied: stickerRange,
+    );
+  }
+  
+  // ==================== CÁLCULO STICKER ====================
+  
+  /// Calcula el precio de un sticker
+  static StickerPriceResult calculateStickerPrice({
+    required double widthM,
+    required double heightM,
+    required int quantity,
+  }) {
+    // Calcular área en metros cuadrados
+    final areaM2 = widthM * heightM;
+    
+    // Convertir a pulgadas cuadradas
+    final areaSqInch = areaM2 * 1550.0031;
+    
+    // Precio por pulgada² según el tamaño total
+    final pricePerSqInch = _getStickerPricePerSqInch(areaSqInch);
+    final pricePerUnit = areaSqInch * pricePerSqInch;
+    final totalPrice = pricePerUnit * quantity;
+    
+    final range = _getStickerRange(areaSqInch);
+    
+    return StickerPriceResult(
+      widthMeters: widthM,
+      heightMeters: heightM,
+      areaSqInch: areaSqInch,
+      areaM2: areaM2,
+      pricePerSqInch: pricePerSqInch,
+      pricePerUnit: pricePerUnit,
+      totalPrice: totalPrice,
+      rangeApplied: range,
+    );
+  }
+  
+  // ==================== CÁLCULO BANNER ====================
+  
+  /// Calcula el precio de un banner
+  static BannerPriceResult calculateBannerPrice({
+    required double widthM,
+    required double heightM,
+    required int quantity,
+    bool withOjetes = false,
+    int ojetesCount = 0,
+    List<int> ojetesGrid = const [],
+  }) {
+    // Calcular área en metros cuadrados
+    final areaM2 = widthM * heightM;
+    
+    // Convertir a pulgadas cuadradas
+    final areaSqInch = areaM2 * 1550.0031;
+    
+    // Precio por pulgada² según el tamaño total
+    final pricePerSqInch = _getBannerPricePerSqInch(areaSqInch);
+    double pricePerUnit = areaSqInch * pricePerSqInch;
+    final totalBeforeOjetes = pricePerUnit * quantity;
+    
+    // Costo de ojetes
+    double ojetesCost = 0.0;
+    if (withOjetes && ojetesCount > 0) {
+      ojetesCost = ojetesCount * _ojeteCost;
+      pricePerUnit += ojetesCost;
+    }
+    
+    final totalPrice = pricePerUnit * quantity;
+    
+    final range = _getBannerRange(areaSqInch);
+    
+    return BannerPriceResult(
+      widthMeters: widthM,
+      heightMeters: heightM,
+      areaSqInch: areaSqInch,
+      areaM2: areaM2,
+      pricePerSqInch: pricePerSqInch,
+      pricePerUnit: pricePerUnit,
+      totalPrice: totalPrice,
+      withOjetes: withOjetes,
+      ojetesCount: ojetesCount,
+      ojetesGrid: ojetesGrid,
+      ojetesCost: ojetesCost * quantity,
+      rangeApplied: range,
+    );
+  }
+  
+  // ==================== CONVERSIONES ====================
+  
+  /// Convierte un valor a pulgadas
+  static double convertToInches(double value, String unit) {
+    switch (unit.toLowerCase()) {
+      case 'cm':
+        return value / 2.54;
+      case 'pulgadas':
+      case 'in':
+        return value;
+      case 'metros':
+      case 'm':
+        return value * 39.3701;
+      case 'pies':
+      case 'ft':
+        return value * 12;
+      default:
+        return value;
+    }
+  }
+  
+  /// Convierte un valor a metros
+  static double convertToMeters(double value, String unit) {
+    switch (unit.toLowerCase()) {
+      case 'cm':
+        return value / 100;
+      case 'pulgadas':
+      case 'in':
+        return value * 0.0254;
+      case 'metros':
+      case 'm':
+        return value;
+      case 'pies':
+      case 'ft':
+        return value * 0.3048;
+      default:
+        return value / 100;
+    }
+  }
+  
+  /// Formatea a pulgadas para display
+  static String formatToInches(double value, String unit) {
+    final inches = convertToInches(value, unit);
+    return '${inches.toStringAsFixed(2)}"';
+  }
+  
+  // ==================== VALIDACIONES ====================
+  
+  /// Valida las dimensiones de PVC (límite 48x96 pulgadas)
+  static PVCDimensionValidation validatePVCDimensions(double widthInches, double heightInches) {
+    const maxWidth = 48.0;
+    const maxHeight = 96.0;
+    
+    // Verificar si excede el límite
+    final exceedsLimit = widthInches > maxWidth || heightInches > maxHeight;
+    
+    if (exceedsLimit) {
+      final suggestion = widthInches > maxWidth && heightInches > maxWidth
+          ? 'El material es muy grande (${widthInches.toStringAsFixed(0)}" x ${heightInches.toStringAsFixed(0)}"). Considera dividir en múltiples piezas.'
+          : widthInches > maxWidth
+              ? 'El ancho excede el límite de $maxWidth pulgadas. Ancho actual: ${widthInches.toStringAsFixed(0)}"'
+              : 'El alto excede el límite de $maxHeight pulgadas. Alto actual: ${heightInches.toStringAsFixed(0)}"';
+      
+      return PVCDimensionValidation(
+        isValid: false,
+        widthInches: widthInches,
+        heightInches: heightInches,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        message: '⚠️ Dimensiones exceden el límite del material.\nEl PVC disponible tiene un tamaño máximo de $maxWidth" x $maxHeight".\n$suggestion',
+      );
+    }
+    
+    return PVCDimensionValidation(
+      isValid: true,
+      widthInches: widthInches,
+      heightInches: heightInches,
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      message: '✅ Dimensiones válidas',
+    );
+  }
+  
+  // ==================== HELPERS PRIVADOS ====================
+  
+  static double _getStickerPricePerSqInch(double areaSqInch) {
+    // Rangos de precio para stickers (mientras más grande, más económico)
+    if (areaSqInch <= 10) return 0.030;      // Muy pequeños
+    if (areaSqInch <= 50) return 0.025;      // Pequeños
+    if (areaSqInch <= 100) return 0.020;     // Medianos
+    if (areaSqInch <= 200) return 0.018;     // Grandes
+    if (areaSqInch <= 500) return 0.015;     // Muy grandes
+    return 0.012;                             // Gigantes
+  }
+  
+  static double _getBannerPricePerSqInch(double areaSqInch) {
+    // Rangos de precio para banners
+    if (areaSqInch <= 100) return 0.018;     // Pequeños
+    if (areaSqInch <= 500) return 0.015;     // Medianos
+    if (areaSqInch <= 1000) return 0.012;    // Grandes
+    if (areaSqInch <= 2000) return 0.010;    // Muy grandes
+    return 0.009;                              // Gigantes
+  }
+  
+  static String _getStickerRange(double areaSqInch) {
+    if (areaSqInch <= 10) return 'Muy pequeño (<10 pulg²)';
+    if (areaSqInch <= 50) return 'Pequeño (10-50 pulg²)';
+    if (areaSqInch <= 100) return 'Mediano (50-100 pulg²)';
+    if (areaSqInch <= 200) return 'Grande (100-200 pulg²)';
+    if (areaSqInch <= 500) return 'Muy grande (200-500 pulg²)';
+    return 'Gigante (>500 pulg²)';
+  }
+  
+  static String _getBannerRange(double areaSqInch) {
+    if (areaSqInch <= 100) return 'Pequeño (<100 pulg²)';
+    if (areaSqInch <= 500) return 'Mediano (100-500 pulg²)';
+    if (areaSqInch <= 1000) return 'Grande (500-1000 pulg²)';
+    if (areaSqInch <= 2000) return 'Muy grande (1000-2000 pulg²)';
+    return 'Gigante (>2000 pulg²)';
+  }
+}
+
+// ==================== RESULT CLASSES ====================
+
+class PVCPriceResult {
+  final double widthMeters;
+  final double heightMeters;
+  final double areaSqInch;
+  final double areaM2;
+  final int thicknessMM;
+  final double pvcTotalPrice;
+  final double stickerTotalPrice;
+  final double laborTotalPrice;
+  final double pricePerUnit;
+  final double totalPrice;
+  final String stickerRangeApplied;
+  
+  PVCPriceResult({
+    required this.widthMeters,
+    required this.heightMeters,
+    required this.areaSqInch,
+    required this.areaM2,
+    required this.thicknessMM,
+    required this.pvcTotalPrice,
+    required this.stickerTotalPrice,
+    required this.laborTotalPrice,
+    required this.pricePerUnit,
+    required this.totalPrice,
+    required this.stickerRangeApplied,
+  });
+}
+
+class StickerPriceResult {
+  final double widthMeters;
+  final double heightMeters;
+  final double areaSqInch;
+  final double areaM2;
+  final double pricePerSqInch;
+  final double pricePerUnit;
+  final double totalPrice;
+  final String rangeApplied;
+  
+  StickerPriceResult({
+    required this.widthMeters,
+    required this.heightMeters,
+    required this.areaSqInch,
+    required this.areaM2,
+    required this.pricePerSqInch,
+    required this.pricePerUnit,
+    required this.totalPrice,
+    required this.rangeApplied,
+  });
+}
+
+class BannerPriceResult {
+  final double widthMeters;
+  final double heightMeters;
+  final double areaSqInch;
+  final double areaM2;
+  final double pricePerSqInch;
+  final double pricePerUnit;
+  final double totalPrice;
+  final bool withOjetes;
+  final int ojetesCount;
+  final List<int> ojetesGrid;
+  final double ojetesCost;
+  final String rangeApplied;
+  
+  BannerPriceResult({
+    required this.widthMeters,
+    required this.heightMeters,
+    required this.areaSqInch,
+    required this.areaM2,
+    required this.pricePerSqInch,
+    required this.pricePerUnit,
+    required this.totalPrice,
+    required this.withOjetes,
+    required this.ojetesCount,
+    required this.ojetesGrid,
+    required this.ojetesCost,
+    required this.rangeApplied,
+  });
+}
+
+class PVCDimensionValidation {
+  final bool isValid;
+  final double widthInches;
+  final double heightInches;
+  final double maxWidth;
+  final double maxHeight;
+  final String message;
+  
+  PVCDimensionValidation({
+    required this.isValid,
+    required this.widthInches,
+    required this.heightInches,
+    required this.maxWidth,
+    required this.maxHeight,
+    required this.message,
+  });
+}
+
+// ==================== CONSTANTES EXPORTADAS ====================
+
+class PVCThicknessPrices {
+  static const Map<int, double> prices = {
+    2: 0.010,
+    3: 0.015,
+    5: 0.025,
+    8: 0.040,
+  };
+  
+  static const double withoutBase = 50.0;
+  static const double withBase = 80.0;
+}
+
+class DesignCosts {
+  static const double basico = 50.0;
+  static const double intermedio = 100.0;
+  static const double avanzado = 200.0;
+  static const double vinilAdditional = 30.0;
+}
+
+class OjetesCost {
+  static const double perUnit = 10.0;
+}
