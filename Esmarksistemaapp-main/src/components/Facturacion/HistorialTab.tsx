@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronUp } from 'lucide-react';
 import { useApp } from './context/AppContext';
+import { getCurrentUser } from '../../utils/auth';
 
 interface RangoData {
   id: number;
@@ -27,11 +28,12 @@ export function HistorialTab() {
 
   // Calculate facturas emitidas from state
   const facturasEmitidas = state.facturas.filter(f => f.tipo === 'emitida').length;
+  const currentUser = getCurrentUser();
 
   const rangos: RangoData[] = [
     {
       id: 1,
-      creador: 'Olga Sarmiento',
+      creador: currentUser?.name || currentUser?.username || 'Sistema',
       estado: 'Activo',
       fechaCreacion: '15 ene 2026',
       facturasEmitidas,

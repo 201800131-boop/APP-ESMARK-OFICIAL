@@ -1,0 +1,199 @@
+@keyframes esmark-drop-and-shift {
+  0% { transform: translate(0, 15px); }
+  16.67% { transform: translate(80px, 13px); }
+  33.34% { transform: translate(40px, 10px); }
+  50.01% { transform: translate(40px, -30px); }
+  66.68% { transform: translate(40px, 55px); }
+  83.35% { transform: translate(40px, 10px); }
+  100% { transform: translate(0, 15px); }
+}
+
+@keyframes esmark-bubble-glint {
+  0%, 16.67%, 50.01%, 66.68%, 100% { transform: translate(0, 0); opacity: 0; }
+  8.335%, 33.34%, 58.345%, 83.35% { transform: translate(2px, 2px); opacity: 0.72; }
+}
+
+@keyframes esmark-splash-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes esmark-splash-progress {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(35%); }
+  100% { transform: translateX(110%); }
+}
+
+.login-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(30, 64, 175, 0.2), transparent 34%),
+    linear-gradient(145deg, #050915, #0b1224 56%, #050914);
+  color: #fff;
+}
+
+.login-splash__glow {
+  position: absolute;
+  width: 34vw;
+  height: 34vw;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+.login-splash__glow--blue {
+  top: -18vw;
+  right: -8vw;
+  background: #2563eb;
+}
+
+.login-splash__glow--green {
+  bottom: -22vw;
+  left: -8vw;
+  background: #16a34a;
+}
+
+.login-splash__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(420px, calc(100vw - 32px));
+  flex-direction: column;
+  align-items: center;
+  padding: 34px 32px 30px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 28px;
+  background: rgba(15, 23, 42, 0.56);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(22px);
+  animation: esmark-splash-rise 420ms ease-out both;
+}
+
+.login-splash__logo {
+  width: 155px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+.login-splash__loader {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 2px 0 10px;
+}
+
+.login-splash__track {
+  position: absolute;
+  top: 45px;
+  left: 5px;
+  width: 130px;
+  height: 48px;
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  border-radius: 25px;
+  background: linear-gradient(180deg, #172033, #080d18);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.login-splash__track--one { transform: rotate(45deg); }
+.login-splash__track--two { transform: rotate(-45deg); }
+
+.login-splash__bubble {
+  position: absolute;
+  top: 47px;
+  left: 15px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  animation: esmark-drop-and-shift 5s ease-in-out infinite;
+  box-shadow: 0 5px 13px rgba(0, 0, 0, 0.4);
+}
+
+.login-splash__bubble::after {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  content: '';
+  animation: esmark-bubble-glint 5s ease-in-out infinite;
+}
+
+.login-splash__bubble--red {
+  z-index: 1;
+  background: radial-gradient(circle at 30% 30%, #fecaca, #ef4444 48%, #991b1b);
+  animation-duration: 5s;
+}
+
+.login-splash__bubble--blue {
+  z-index: 2;
+  background: radial-gradient(circle at 30% 30%, #bfdbfe, #3b82f6 48%, #1e3a8a);
+  animation-duration: 6s;
+  animation-delay: -1.2s;
+}
+
+.login-splash__bubble--yellow {
+  z-index: 3;
+  background: radial-gradient(circle at 30% 30%, #fef9c3, #facc15 48%, #a16207);
+  animation-duration: 4s;
+  animation-delay: -2.1s;
+}
+
+.login-splash__bubble--green {
+  z-index: 4;
+  background: radial-gradient(circle at 30% 30%, #bbf7d0, #22c55e 48%, #166534);
+  animation-duration: 7s;
+  animation-delay: -3.4s;
+}
+
+.login-splash__content h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.login-splash__content p {
+  margin: 7px 0 18px;
+  color: #aebbd0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-splash__progress {
+  width: 160px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.login-splash__progress span {
+  display: block;
+  width: 58%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ef4444, #facc15, #22c55e, #3b82f6);
+  animation: esmark-splash-progress 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-splash__content,
+  .login-splash__bubble,
+  .login-splash__bubble::after,
+  .login-splash__progress span {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}

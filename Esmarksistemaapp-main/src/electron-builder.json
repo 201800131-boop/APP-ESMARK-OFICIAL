@@ -1,0 +1,76 @@
+{
+  "appId": "com.esmark.esmarksystem",
+  "productName": "EsmarkSystem",
+  "copyright": "Copyright © 2024 EsMark Media",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "src/electron/dist/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "public",
+      "to": "public",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "artifactName": "EsmarkSystem-Setup-${version}.exe",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "EsmarkSystem",
+    "deleteAppDataOnUninstall": false,
+    "perMachine": false,
+    "license": "LICENSE.txt"
+  },
+  "portable": {
+    "artifactName": "${productName}-${version}-Portable.${ext}"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.business",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  },
+  "linux": {
+    "target": ["AppImage", "deb", "rpm"],
+    "category": "Office",
+    "icon": "build/icons"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "<OWNER>",
+      "repo": "<REPO>"
+    }
+  ]
+}

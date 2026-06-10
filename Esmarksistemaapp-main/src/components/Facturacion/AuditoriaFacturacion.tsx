@@ -84,7 +84,7 @@ export function AuditoriaFacturacion() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-8">
+    <div className="bg-white rounded-xl shadow-sm p-8 facturacion-list-page">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Auditoría - Historial de actividad</h2>

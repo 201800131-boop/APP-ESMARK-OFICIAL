@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
-import { Factura, Recibo, EmpresaInfo, DatosFiscales, DisenoConfig } from './context/AppContext';
+import { Factura, Recibo, EmpresaInfo, DatosFiscales, DisenoConfig } from '../context/AppContext';
+import { amountToWords } from '../../../utils/number-to-words';
 
 export function generateFacturaPDF(
   factura: Factura,
@@ -15,26 +16,37 @@ export function generateFacturaPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
+  const cfg = {
+    tamanoLogo: disenoConfig?.tamanoLogo || 30,
+    fuenteTitulo: disenoConfig?.fuenteTitulo || 10,
+    fuenteTexto: disenoConfig?.fuenteTexto || 8,
+    espaciado: disenoConfig?.espaciado || 5,
+    colorEncabezadoTabla: disenoConfig?.colorEncabezadoTabla || '#1F2D3D',
+    colorTotales: disenoConfig?.colorTotales || '#1F2D3D',
+  };
+
+  const innerWidth = pageWidth - (margin * 2);
+  const lineHeight = Math.max(4, cfg.espaciado);
   let yPos = margin;
 
-  // ENCABEZADO: Info factura a la izquierda, Logo a la derecha
-  doc.setFontSize(10);
+  // ENCABEZADO: bloque izquierdo
+  doc.setFontSize(cfg.fuenteTitulo);
   doc.setFont('helvetica', 'bold');
   doc.text('Factura', margin, yPos);
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  yPos += 5;
-  doc.text(`N: ${factura.numeroFactura || 'Borrador'}`, margin, yPos);
-  yPos += 4;
   const fechaEmision = factura.fechaEmision || factura.fechaCreacion.split('T')[0];
+  doc.setFontSize(cfg.fuenteTexto);
+  doc.setFont('helvetica', 'normal');
+  yPos += lineHeight;
+  doc.text(`N: ${factura.numeroFactura || 'Borrador'}`, margin, yPos);
+  yPos += lineHeight;
   doc.text(`FECHA EMISIÓN: ${fechaEmision}`, margin, yPos);
-  yPos += 4;
+  yPos += lineHeight;
   doc.setFont('helvetica', 'bold');
   doc.text('ORIGINAL: CLIENTE', margin, yPos);
 
   // Logo a la derecha
-  const logoSize = disenoConfig?.tamanoLogo || 30;
+  const logoSize = cfg.tamanoLogo;
   const logoX = pageWidth - margin - logoSize;
   const logoY = margin;
 
@@ -44,187 +56,195 @@ export function generateFacturaPDF(
     } catch (e) {
       doc.setFillColor(232, 245, 233);
       doc.rect(logoX, logoY, logoSize, logoSize, 'F');
-      doc.setFontSize(20);
-      doc.text('🚀', logoX + logoSize/2, logoY + logoSize/2, { align: 'center' });
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text('Logo', logoX + (logoSize / 2), logoY + (logoSize / 2), { align: 'center' });
     }
   } else {
     doc.setFillColor(232, 245, 233);
     doc.rect(logoX, logoY, logoSize, logoSize, 'F');
-    doc.setFontSize(20);
-    doc.text('🚀', logoX + logoSize/2, logoY + logoSize/2, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(31, 41, 55);
+    doc.text('Logo', logoX + (logoSize / 2), logoY + (logoSize / 2), { align: 'center' });
   }
 
-  // DATOS DE LA EMPRESA
+  // DATOS DE EMPRESA
   yPos = margin + logoSize + 8;
-  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(cfg.fuenteTitulo);
   doc.setFont('helvetica', 'bold');
   doc.text(empresaInfo.razonSocial, margin, yPos);
 
-  doc.setFontSize(8);
+  doc.setFontSize(cfg.fuenteTexto);
   doc.setFont('helvetica', 'normal');
-  yPos += 4;
+  yPos += lineHeight;
   doc.text('Sociedad Anónima Tegucigalpa', margin, yPos);
-  yPos += 4;
+  yPos += lineHeight;
   doc.text(`Teléfono: ${empresaInfo.telefono}`, margin, yPos);
-  yPos += 4;
+  yPos += lineHeight;
   doc.text(`Dirección: ${empresaInfo.direccion}`, margin, yPos);
-  yPos += 4;
+  yPos += lineHeight;
   doc.text(`RTN: ${empresaInfo.rtn}`, margin, yPos);
 
-  // DATOS DEL CLIENTE
-  yPos += 8;
+  // DATOS CLIENTE
+  yPos += lineHeight + 2;
   doc.setFont('helvetica', 'bold');
-  doc.text('Cliente: ', margin, yPos);
+  doc.text('Cliente:', margin, yPos);
   doc.setFont('helvetica', 'normal');
   doc.text(factura.cliente.nombre, margin + 15, yPos);
 
-  yPos += 4;
+  yPos += lineHeight;
   doc.setFont('helvetica', 'bold');
-  doc.text('RTN: ', margin, yPos);
+  doc.text('RTN:', margin, yPos);
   doc.setFont('helvetica', 'normal');
   doc.text(factura.cliente.rtn || '000000000000', margin + 15, yPos);
 
-  // ENCABEZADO "Productos / Servicios"
-  yPos += 8;
-  doc.setFontSize(9);
+  // TITULO TABLA
+  yPos += lineHeight + 2;
+  doc.setFontSize(cfg.fuenteTitulo);
   doc.setFont('helvetica', 'bold');
   doc.text('Productos / Servicios', margin, yPos);
 
-  // TABLA DE PRODUCTOS
-  yPos += 5;
-  const tableStartY = yPos;
-  const colWidths = {
-    producto: 80,
-    cant: 15,
-    precio: 25,
-    descuento: 25,
-    impuesto: 25,
-    total: 25
-  };
+  // TABLA
+  yPos += 4;
+  const tableHeaderHeight = 7;
+  const rowHeight = 6;
+  const columns = [
+    { key: 'descripcion', label: 'Producto / Descripción', width: 70, align: 'left' as const },
+    { key: 'cantidad', label: 'Cant.', width: 15, align: 'center' as const },
+    { key: 'precio', label: 'Precio', width: 22, align: 'right' as const },
+    { key: 'descuento', label: 'Descuento', width: 22, align: 'right' as const },
+    { key: 'impuesto', label: 'Impuesto (ISV)', width: 28, align: 'right' as const },
+    { key: 'total', label: 'Total', width: 28, align: 'right' as const },
+  ];
 
-  // Encabezado de tabla
-  const headerColor = disenoConfig?.colorEncabezadoTabla || '#1F2D3D';
-  const rgb = hexToRgb(headerColor);
-  doc.setFillColor(rgb.r, rgb.g, rgb.b);
-  doc.rect(margin, yPos, pageWidth - 2*margin, 7, 'F');
+  const headerRgb = hexToRgb(cfg.colorEncabezadoTabla);
+  doc.setFillColor(headerRgb.r, headerRgb.g, headerRgb.b);
+  doc.rect(margin, yPos, innerWidth, tableHeaderHeight, 'F');
 
+  let colX = margin;
+  doc.setFontSize(cfg.fuenteTexto);
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
+  columns.forEach((col) => {
+    if (col.align === 'left') {
+      doc.text(col.label, colX + 2, yPos + 4.8);
+    } else if (col.align === 'center') {
+      doc.text(col.label, colX + (col.width / 2), yPos + 4.8, { align: 'center' });
+    } else {
+      doc.text(col.label, colX + col.width - 2, yPos + 4.8, { align: 'right' });
+    }
+    colX += col.width;
+  });
 
-  let xPos = margin + 2;
-  doc.text('Producto / Descripción', xPos, yPos + 5);
-  xPos += colWidths.producto;
-  doc.text('Cant.', xPos, yPos + 5, { align: 'center' });
-  xPos += colWidths.cant;
-  doc.text('Precio', xPos, yPos + 5, { align: 'right' });
-  xPos += colWidths.precio;
-  doc.text('Descuento', xPos, yPos + 5, { align: 'right' });
-  xPos += colWidths.descuento;
-  doc.text('Impuesto (ISV)', xPos, yPos + 5, { align: 'right' });
-  xPos += colWidths.impuesto;
-  doc.text('Total', xPos, yPos + 5, { align: 'right' });
-
-  yPos += 7;
-
-  // Filas de productos
+  yPos += tableHeaderHeight;
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
+  doc.setDrawColor(221, 221, 221);
 
   factura.productos.forEach((producto) => {
     const subtotal = producto.cantidad * producto.precio;
-    const descuento = subtotal * (producto.descuento / 100);
-    const baseImponible = subtotal - descuento;
-    const impuesto = baseImponible * (producto.impuesto / 100);
-    const total = baseImponible + impuesto;
+    const descuentoValor = subtotal * (producto.descuento / 100);
+    const baseImponible = subtotal - descuentoValor;
+    const impuestoValor = baseImponible * (producto.impuesto / 100);
+    const total = baseImponible + impuestoValor;
 
-    // Borde de celda
-    doc.setDrawColor(221, 221, 221);
-    doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+    colX = margin;
+    columns.forEach((col) => {
+      doc.rect(colX, yPos, col.width, rowHeight);
 
-    xPos = margin + 2;
-    doc.text(producto.nombre, xPos, yPos + 4);
-    xPos += colWidths.producto;
-    doc.text(producto.cantidad.toString(), xPos, yPos + 4, { align: 'center' });
-    xPos += colWidths.cant;
-    doc.text(`L${producto.precio.toFixed(2)}`, xPos, yPos + 4, { align: 'right' });
-    xPos += colWidths.precio;
-    doc.text(`${producto.descuento.toFixed(2)}%`, xPos, yPos + 4, { align: 'right' });
-    xPos += colWidths.descuento;
-    doc.text(`${producto.impuesto.toFixed(2)}%`, xPos, yPos + 4, { align: 'right' });
-    xPos += colWidths.impuesto;
-    doc.text(`L${total.toFixed(2)}`, xPos, yPos + 4, { align: 'right' });
+      let value = '';
+      if (col.key === 'descripcion') value = producto.nombre;
+      if (col.key === 'cantidad') value = String(producto.cantidad);
+      if (col.key === 'precio') value = `L${producto.precio.toFixed(2)}`;
+      if (col.key === 'descuento') value = `${producto.descuento.toFixed(2)}%`;
+      if (col.key === 'impuesto') value = `${producto.impuesto.toFixed(2)}%`;
+      if (col.key === 'total') value = `L${total.toFixed(2)}`;
 
-    yPos += 6;
+      if (col.align === 'left') {
+        const short = doc.splitTextToSize(value, col.width - 4)[0] || '';
+        doc.text(String(short), colX + 2, yPos + 4.2);
+      } else if (col.align === 'center') {
+        doc.text(value, colX + (col.width / 2), yPos + 4.2, { align: 'center' });
+      } else {
+        doc.text(value, colX + col.width - 2, yPos + 4.2, { align: 'right' });
+      }
+
+      colX += col.width;
+    });
+
+    yPos += rowHeight;
   });
 
-  // SECCIÓN INFERIOR: Info adicional (izquierda) y Totales (derecha)
-  yPos += 10;
+  // SECCIÓN INFERIOR
+  const sectionStartY = yPos + 10;
   const leftColX = margin;
-  const rightColX = pageWidth / 2 + 10;
+  const rightColX = margin + (innerWidth * 0.56);
+  const rightColW = pageWidth - margin - rightColX;
 
-  // Columna izquierda
-  doc.setFontSize(8);
+  let leftY = sectionStartY;
+  doc.setFontSize(cfg.fuenteTexto);
   doc.setFont('helvetica', 'bold');
-  doc.text('No. Orden de compra exento:', leftColX, yPos);
-  yPos += 5;
-  doc.text('No. Constancia de exoneración:', leftColX, yPos);
-  yPos += 5;
-  doc.text('No. Registro SAG:', leftColX, yPos);
-  yPos += 8;
-  doc.text('Notas:', leftColX, yPos);
+  doc.text('No. Orden de compra exento:', leftColX, leftY);
+  leftY += lineHeight;
+  doc.text('No. Constancia de exoneración:', leftColX, leftY);
+  leftY += lineHeight;
+  doc.text('No. Registro SAG:', leftColX, leftY);
+  leftY += lineHeight + 2;
+  doc.text('Notas:', leftColX, leftY);
+
   if (factura.nota) {
     doc.setFont('helvetica', 'normal');
-    yPos += 4;
-    doc.text(factura.nota, leftColX, yPos);
+    const notaY = leftY + lineHeight;
+    const notaLines = doc.splitTextToSize(factura.nota, (innerWidth * 0.5) - 4);
+    doc.text(notaLines, leftColX, notaY);
+    leftY = notaY + (notaLines.length * lineHeight);
   }
-  yPos += 8;
+
+  leftY += lineHeight + 1;
   doc.setFont('helvetica', 'bold');
-  doc.text('Código/Lugar de la factura:', leftColX, yPos);
+  doc.text('Código/Lugar de la factura:', leftColX, leftY);
 
-  // Columna derecha - Totales
-  let totalYPos = yPos - 50;
+  let rightY = sectionStartY;
   doc.setFont('helvetica', 'normal');
+  doc.text('Descuento:', rightColX, rightY);
+  doc.text(`L${factura.descuento.toFixed(2)}`, pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('Descuento:', rightColX, totalYPos);
-  doc.text('0.00', pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('Importe Exento:', rightColX, rightY);
+  doc.text('0.00', pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('Importe Exento:', rightColX, totalYPos);
-  doc.text('0.00', pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('Importe Exonerado:', rightColX, rightY);
+  doc.text('0.00', pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('Importe Exonerado:', rightColX, totalYPos);
-  doc.text('0.00', pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('Importe Gravado 15%:', rightColX, rightY);
+  doc.text(`L${factura.subtotal.toFixed(2)}`, pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('Importe Gravado 15%:', rightColX, totalYPos);
-  doc.text(`L${factura.subtotal.toFixed(2)}`, pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('Importe Gravado 18%:', rightColX, rightY);
+  doc.text('0.00', pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('Importe Gravado 18%:', rightColX, totalYPos);
-  doc.text('0.00', pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('ISV 15%:', rightColX, rightY);
+  doc.text(`L${factura.impuestos.toFixed(2)}`, pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight;
 
-  doc.text('ISV 15%:', rightColX, totalYPos);
-  doc.text(`L${factura.impuestos.toFixed(2)}`, pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 5;
+  doc.text('ISV 18%:', rightColX, rightY);
+  doc.text('0.00', pageWidth - margin, rightY, { align: 'right' });
+  rightY += lineHeight + 2;
 
-  doc.text('ISV 18%:', rightColX, totalYPos);
-  doc.text('0.00', pageWidth - margin, totalYPos, { align: 'right' });
-  totalYPos += 8;
-
-  // TOTAL FACTURA con fondo
-  const totalColor = disenoConfig?.colorTotales || '#1F2D3D';
-  const totalRgb = hexToRgb(totalColor);
+  const totalRgb = hexToRgb(cfg.colorTotales);
   doc.setFillColor(totalRgb.r, totalRgb.g, totalRgb.b);
-  doc.roundedRect(rightColX - 2, totalYPos - 4, pageWidth - margin - rightColX + 2, 8, 2, 2, 'F');
-
+  doc.roundedRect(rightColX - 2, rightY - 4.8, rightColW + 2, 8.5, 2, 2, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('TOTAL FACTURA:', rightColX, totalYPos);
-  doc.text(`L${factura.total.toFixed(2)}`, pageWidth - margin, totalYPos, { align: 'right' });
+  doc.setFontSize(cfg.fuenteTitulo);
+  doc.text('TOTAL FACTURA:', rightColX, rightY + 1);
+  doc.text(`L${factura.total.toFixed(2)}`, pageWidth - margin, rightY + 1, { align: 'right' });
 
   // PIE DE PÁGINA
   const footerY = pageHeight - 30;
@@ -246,159 +266,210 @@ export function generateFacturaPDF(
 export function generateReciboPDF(
   recibo: Recibo,
   empresaInfo: EmpresaInfo,
-  disenoConfig?: DisenoConfig
+  _disenoConfig?: DisenoConfig
 ) {
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
-    format: [215.9, 139.7] // Media carta
+    format: [139.7, 215.9]
   });
+
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 10;
-  let yPos = margin;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 8.9;
+  const cfg = {
+    tamanoLogo: 30,
+    fuenteTitulo: 10,
+    fuenteTexto: 8,
+    espaciado: 5,
+    colorEtiquetas: '#10B981',
+    colorEncabezadoTabla: '#065F46',
+    colorTotales: '#065F46',
+    colorTextoEncabezado: '#FFFFFF',
+    radioBloques: 14,
+  };
 
-  // ENCABEZADO
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Recibo', margin, yPos);
+  const formatMoney = (value: number) => `L ${Number(value || 0).toLocaleString('es-HN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  yPos += 5;
-  doc.text(`N: ${recibo.numeroRecibo}`, margin, yPos);
-  yPos += 4;
-  doc.text(`FECHA: ${recibo.fechaEmision}`, margin, yPos);
-  yPos += 4;
-  doc.text(`MÉTODO DE PAGO: ${recibo.metodoPago}`, margin, yPos);
+  const accent = hexToRgb(cfg.colorEncabezadoTabla);
+  const total = hexToRgb(cfg.colorTotales);
+  const tag = hexToRgb(cfg.colorEtiquetas);
+  const contentX = margin;
+  const contentY = margin;
+  const contentW = pageWidth - margin * 2;
+  const contentH = pageHeight - margin * 2;
+  const radius = Math.max(3, Math.min(8, cfg.radioBloques / 3));
 
-  // Logo a la derecha
-  const logoSize = disenoConfig?.tamanoLogo || 25;
-  const logoX = pageWidth - margin - logoSize;
-  const logoY = margin;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+  doc.setDrawColor(accent.r, accent.g, accent.b);
+  doc.setLineWidth(0.55);
+  doc.roundedRect(contentX, contentY, contentW, contentH, radius, radius);
 
+  const innerX = contentX + 3.2;
+  const innerY = contentY + 3.2;
+  const innerW = contentW - 6.4;
+  const headerH = 26;
+  const receiptBoxW = 42;
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(innerX, innerY, innerW, headerH, 3.2, 3.2);
+
+  const logoSize = Math.max(10, Math.min(18, cfg.tamanoLogo * 0.55));
+  const logoX = innerX + 3;
+  const logoY = innerY + 4;
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(logoX, logoY, logoSize, logoSize, 2.2, 2.2);
   if (empresaInfo.logo) {
     try {
-      doc.addImage(empresaInfo.logo, 'PNG', logoX, logoY, logoSize, logoSize);
+      doc.addImage(empresaInfo.logo, getImageFormat(empresaInfo.logo), logoX + 1, logoY + 1, logoSize - 2, logoSize - 2);
     } catch (e) {
-      doc.setFillColor(76, 175, 80);
-      doc.circle(logoX + logoSize/2, logoY + logoSize/2, logoSize/2, 'F');
+      console.warn('No se pudo insertar el logo en el recibo PDF.', e);
     }
-  } else {
-    doc.setFillColor(76, 175, 80);
-    doc.circle(logoX + logoSize/2, logoY + logoSize/2, logoSize/2, 'F');
   }
 
-  // DATOS DE LA EMPRESA
-  yPos = margin + logoSize + 5;
-  doc.setFontSize(9);
+  const companyX = logoX + logoSize + 3;
+  const companyW = innerW - receiptBoxW - logoSize - 12;
+  doc.setTextColor(accent.r, accent.g, accent.b);
   doc.setFont('helvetica', 'bold');
-  doc.text(empresaInfo.razonSocial, margin, yPos);
+  doc.setFontSize(Math.max(8, cfg.fuenteTitulo + 2));
+  doc.text(empresaInfo.razonSocial || empresaInfo.nombreComercial || 'ESMARK MEDIA', companyX, innerY + 7, { maxWidth: companyW });
 
-  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
   doc.setFont('helvetica', 'normal');
-  yPos += 4;
-  doc.text(`RTN: ${empresaInfo.rtn}`, margin, yPos);
-  yPos += 3.5;
-  doc.text(`Tel: ${empresaInfo.telefono}`, margin, yPos);
+  doc.setFontSize(Math.max(5.8, cfg.fuenteTexto - 1));
+  doc.text(`Direccion: ${empresaInfo.direccion || 'Juticalpa, Olancho, Honduras'}`, companyX, innerY + 12.4, { maxWidth: companyW / 2 - 2 });
+  doc.text(`Tel: ${empresaInfo.telefono || '+504 9999-9999'}`, companyX + companyW / 2, innerY + 12.4, { maxWidth: companyW / 2 });
+  doc.text(`Correo: ${empresaInfo.email || 'esmarkmedia@gmail.com'}`, companyX, innerY + 16.3, { maxWidth: companyW / 2 - 2 });
+  doc.text(`RTN: ${empresaInfo.rtn || '08011999012345'}`, companyX + companyW / 2, innerY + 16.3, { maxWidth: companyW / 2 });
 
-  // RECIBIDO DE
-  yPos += 6;
+  doc.setDrawColor(tag.r, tag.g, tag.b);
+  doc.setFillColor(240, 253, 244);
+  doc.roundedRect(companyX, innerY + 19.5, 50, 5, 2, 2, 'FD');
+  doc.setTextColor(accent.r, accent.g, accent.b);
   doc.setFont('helvetica', 'bold');
-  doc.text('Recibido de: ', margin, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(recibo.cliente.nombre, margin + 22, yPos);
+  doc.setFontSize(5.4);
+  doc.text('FECHA DE EMISION', companyX + 2, innerY + 22.9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(recibo.fechaEmision || recibo.fechaCreacion.split('T')[0], companyX + 30, innerY + 22.9);
 
-  yPos += 4;
+  const boxX = innerX + innerW - receiptBoxW - 2;
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(boxX, innerY + 3, receiptBoxW, headerH - 6, 3.2, 3.2, 'FD');
+  doc.setTextColor(accent.r, accent.g, accent.b);
   doc.setFont('helvetica', 'bold');
-  doc.text('RTN: ', margin, yPos);
-  doc.setFont('helvetica', 'normal');
-  doc.text(recibo.cliente.rtn || 'N/A', margin + 10, yPos);
-
-  // TABLA DE CONCEPTOS
-  yPos += 6;
-  const headerColor = disenoConfig?.colorEncabezadoTabla || '#1F2D3D';
-  const rgb = hexToRgb(headerColor);
-  doc.setFillColor(rgb.r, rgb.g, rgb.b);
-  doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
-
+  doc.setFontSize(9.5);
+  doc.text('RECIBO', boxX + receiptBoxW / 2, innerY + 8.2, { align: 'center' });
+  doc.setTextColor(2, 6, 23);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(boxX + 5, innerY + 10.2, receiptBoxW - 10, 6.5, 2, 2, 'FD');
+  doc.setFontSize(8.8);
+  doc.text(`N ${recibo.numeroRecibo}`, boxX + receiptBoxW / 2, innerY + 14.8, { align: 'center' });
+  doc.setFillColor(accent.r, accent.g, accent.b);
+  doc.roundedRect(boxX + 14, innerY + 18, receiptBoxW - 28, 4.5, 1.8, 1.8, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7);
+  doc.setFontSize(5.8);
+  doc.text('PAGADO', boxX + receiptBoxW / 2, innerY + 21.2, { align: 'center' });
+
+  const sectionX = innerX + 3;
+  const sectionW = innerW - 6;
+  let y = innerY + headerH + 5;
+  const labelSize = Math.max(5.8, cfg.fuenteTexto - 1.2);
+  const bodySize = Math.max(7.2, cfg.fuenteTexto + 1.2);
+
+  const drawLabelBox = (label: string, value: string, height: number, fill = false) => {
+    doc.setDrawColor(203, 213, 225);
+    doc.setFillColor(fill ? 248 : 255, fill ? 250 : 255, fill ? 252 : 255);
+    doc.roundedRect(sectionX, y, sectionW, height, 3, 3, 'FD');
+    doc.setTextColor(accent.r, accent.g, accent.b);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(labelSize);
+    doc.text(label.toUpperCase(), sectionX + 3, y + 5);
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(bodySize);
+    doc.text(value, sectionX + 3, y + height - 3.2, { maxWidth: sectionW - 6 });
+    y += height + 3.5;
+  };
+
+  drawLabelBox('Recibido de', recibo.cliente.nombre || 'Cliente', 13, true);
+
+  const concepto = recibo.productos.length > 0
+    ? recibo.productos.map((producto) => producto.nombre).filter(Boolean).join(', ')
+    : 'Recibo de pago por productos o servicios realizados.';
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(sectionX, y, sectionW, 16, 3, 3);
+  doc.setTextColor(accent.r, accent.g, accent.b);
   doc.setFont('helvetica', 'bold');
-  doc.text('Concepto', margin + 2, yPos + 4);
-  doc.text('Cant', pageWidth / 2, yPos + 4, { align: 'center' });
-  doc.text('Precio', pageWidth - 40, yPos + 4, { align: 'right' });
-  doc.text('Total', pageWidth - margin - 2, yPos + 4, { align: 'right' });
-
-  yPos += 6;
-  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(labelSize);
+  doc.text('CONCEPTO', sectionX + 3, y + 5);
+  doc.setTextColor(30, 41, 59);
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(bodySize);
+  doc.text(doc.splitTextToSize(concepto || 'Recibo de pago.', sectionW - 48)[0] || concepto, sectionX + 3, y + 11.3);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Metodo:', sectionX + sectionW - 43, y + 11.3);
+  doc.setTextColor(accent.r, accent.g, accent.b);
+  doc.setFont('helvetica', 'bold');
+  doc.text(recibo.metodoPago || 'Efectivo', sectionX + sectionW - 30, y + 11.3, { maxWidth: 28 });
+  y += 19.5;
 
-  recibo.productos.forEach((producto) => {
-    const total = producto.cantidad * producto.precio;
-    doc.setDrawColor(221, 221, 221);
-    doc.rect(margin, yPos, pageWidth - 2*margin, 5);
+  drawLabelBox('Cantidad en letras', amountToWords(recibo.total), 13, false);
 
-    doc.text(producto.nombre, margin + 2, yPos + 3.5);
-    doc.text(producto.cantidad.toString(), pageWidth / 2, yPos + 3.5, { align: 'center' });
-    doc.text(`L${producto.precio.toFixed(2)}`, pageWidth - 40, yPos + 3.5, { align: 'right' });
-    doc.text(`L${total.toFixed(2)}`, pageWidth - margin - 2, yPos + 3.5, { align: 'right' });
-
-    yPos += 5;
+  const saldoBoxW = 56;
+  const signatureX = sectionX + saldoBoxW + 4;
+  const bottomH = 23;
+  doc.setFillColor(total.r, total.g, total.b);
+  doc.setDrawColor(total.r, total.g, total.b);
+  doc.roundedRect(sectionX, y, saldoBoxW, bottomH, 3, 3, 'FD');
+  const saldoRows = [
+    ['Saldo anterior', recibo.total],
+    ['Abono', recibo.total],
+    ['Saldo actual', 0],
+  ];
+  saldoRows.forEach(([label, value], index) => {
+    const rowY = y + 5.4 + index * 6.6;
+    if (index > 0) {
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.08);
+      doc.line(sectionX, y + index * 7.2, sectionX + saldoBoxW, y + index * 7.2);
+    }
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', index === 1 ? 'bold' : 'normal');
+    doc.setFontSize(index === 1 ? 7 : 6.4);
+    doc.text(String(label), sectionX + 3, rowY);
+    doc.text(formatMoney(Number(value)), sectionX + saldoBoxW - 3, rowY, { align: 'right' });
   });
 
-  // TOTAL
-  yPos += 5;
-  const totalColor = disenoConfig?.colorTotales || '#1F2D3D';
-  const totalRgb = hexToRgb(totalColor);
-  doc.setFillColor(totalRgb.r, totalRgb.g, totalRgb.b);
-  doc.roundedRect(pageWidth - 60, yPos - 3, 50, 7, 2, 2, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('TOTAL:', pageWidth - 58, yPos);
-  doc.text(`L${recibo.total.toFixed(2)}`, pageWidth - margin - 2, yPos, { align: 'right' });
-
-  // OBSERVACIONES
-  yPos += 10;
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Observaciones:', margin, yPos);
-  if (recibo.nota) {
-    doc.setFont('helvetica', 'normal');
-    yPos += 4;
-    const notaLines = doc.splitTextToSize(recibo.nota, pageWidth - 2*margin);
-    doc.text(notaLines, margin, yPos);
-  }
-
-  // FIRMA AUTORIZADA
-  let firmasY = 115;
-
-  // Si hay firma, mostrarla
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(signatureX, y, sectionW - saldoBoxW - 4, bottomH, 3, 3, 'FD');
+  let firmaLineY = y + 16;
   if (empresaInfo.firma) {
     try {
-      const firmaWidth = 40;
-      const firmaHeight = 20;
-      const firmaX = (pageWidth - firmaWidth) / 2;
-      doc.addImage(empresaInfo.firma, 'PNG', firmaX, firmasY, firmaWidth, firmaHeight);
-      firmasY += firmaHeight + 2;
+      doc.addImage(empresaInfo.firma, getImageFormat(empresaInfo.firma), signatureX + 30, y + 2, 38, 11);
+      firmaLineY = y + 15.5;
     } catch (e) {
-      // Si falla la carga de la firma, continuar sin ella
+      firmaLineY = y + 16;
     }
-  } else {
-    firmasY += 25; // Espacio para firma manual
   }
+  const lineW = 68;
+  const lineX = signatureX + (sectionW - saldoBoxW - 4 - lineW) / 2;
+  doc.setDrawColor(31, 41, 55);
+  doc.line(lineX, firmaLineY, lineX + lineW, firmaLineY);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.4);
+  doc.text('Firma', signatureX + (sectionW - saldoBoxW - 4) / 2, firmaLineY + 4.2, { align: 'center' });
 
-  // Línea para firma
-  doc.setDrawColor(102, 102, 102);
-  const lineWidth = 50;
-  const lineX = (pageWidth - lineWidth) / 2;
-  doc.line(lineX, firmasY, lineX + lineWidth, firmasY);
-
+  doc.setTextColor(accent.r, accent.g, accent.b);
+  doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Firma Autorizada', pageWidth / 2, firmasY + 4, { align: 'center' });
+  doc.text('Gracias por su preferencia', pageWidth / 2, contentY + contentH - 3.2, { align: 'center' });
 
   return doc;
 }
@@ -412,4 +483,11 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
         b: parseInt(result[3], 16),
       }
     : { r: 0, g: 0, b: 0 };
+}
+
+function getImageFormat(dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' {
+  const mime = dataUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);/)?.[1]?.toLowerCase();
+  if (mime === 'jpg' || mime === 'jpeg') return 'JPEG';
+  if (mime === 'webp') return 'WEBP';
+  return 'PNG';
 }

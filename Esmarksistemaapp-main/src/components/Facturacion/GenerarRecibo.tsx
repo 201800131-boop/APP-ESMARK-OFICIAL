@@ -176,7 +176,7 @@ export function GenerarRecibo() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="grid grid-cols-2 gap-8 mb-8">
+      <div className="grid grid-cols-1 gap-8 mb-8 lg:grid-cols-2">
         {/* Left Column - Company Info */}
         <div>
           <div className="mb-6">
@@ -238,9 +238,17 @@ export function GenerarRecibo() {
         </div>
 
         {/* Right Column - Company Logo */}
-        <div className="flex justify-end">
-          <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-green-400 rounded-full flex items-center justify-center">
-            <span className="text-white font-bold">Mi Empresa</span>
+        <div className="flex justify-center lg:justify-end">
+          <div className="w-24 h-24 rounded-xl border border-gray-200 bg-white p-2 shadow-sm flex items-center justify-center">
+            {state.empresaInfo.logo ? (
+              <img
+                src={state.empresaInfo.logo}
+                alt="Logo de la empresa"
+                className="max-h-full max-w-full object-contain"
+              />
+            ) : (
+              <span className="text-gray-500 text-sm font-bold">Logo</span>
+            )}
           </div>
         </div>
       </div>
@@ -276,7 +284,7 @@ export function GenerarRecibo() {
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Nombre
@@ -309,14 +317,14 @@ export function GenerarRecibo() {
         <h3 className="text-base font-semibold text-gray-900 mb-4">Conceptos</h3>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <table className="min-w-[860px] w-full text-sm border-collapse">
             <thead>
               <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-2 px-2 font-medium text-gray-700">Concepto</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-700">Cantidad</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-700">Precio</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-700">Descuento %</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-700">Total</th>
+                <th className="whitespace-nowrap text-left py-2 px-2 font-medium text-gray-700">Concepto</th>
+                <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Cantidad</th>
+                <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Precio</th>
+                <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Descuento %</th>
+                <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Total</th>
                 <th className="w-10"></th>
               </tr>
             </thead>
@@ -390,7 +398,7 @@ export function GenerarRecibo() {
       </div>
 
       {/* Totals Section */}
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Nota (opcional)
@@ -421,7 +429,7 @@ export function GenerarRecibo() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex justify-end gap-3 mt-8">
+      <div className="mt-8 flex flex-wrap justify-end gap-3">
         <button
           onClick={handleSaveRecibo}
           className="px-6 py-2.5 bg-[#1976D2] text-white rounded-lg hover:bg-[#1565C0] transition-colors"

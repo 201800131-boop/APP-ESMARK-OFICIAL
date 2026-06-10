@@ -9,6 +9,7 @@ release/
 .env.*
 !.env.example
 supabase/localstorage-export*.json
+supabase/.temp/
 
 # Logs y temporales
 *.log

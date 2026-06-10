@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { api, logActivity } from '../../../utils/api';
+import { getCurrentUser } from '../../../utils/auth';
 
 // Types
 export interface Producto {
@@ -86,6 +88,12 @@ export interface DisenoConfig {
   colorEtiquetas: string;
   colorEncabezadoTabla: string;
   colorTotales: string;
+  colorFondoPagina?: string;
+  encabezadoModo?: 'solido' | 'degradado';
+  colorEncabezadoFinal?: string;
+  colorTextoEncabezado?: string;
+  radioBloques?: number;
+  altoEncabezado?: number;
   tamanoLogo: number;
   fuenteTitulo: number;
   fuenteTexto: number;
@@ -113,7 +121,7 @@ interface AppContextType {
   addFactura: (factura: Omit<Factura, 'id' | 'fechaCreacion'>) => void;
   updateFactura: (id: string, factura: Partial<Factura>) => void;
   deleteFactura: (id: string) => void;
-  convertProformaToFactura: (id: string) => void;
+  convertProformaToFactura: (id: string, fechaEmision?: string) => void;
   addRecibo: (recibo: Omit<Recibo, 'id' | 'numeroRecibo' | 'fechaCreacion'>) => void;
   deleteRecibo: (id: string) => void;
   addCliente: (cliente: Cliente) => void;
@@ -122,90 +130,73 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+const STORAGE_KEY = 'esmark_facturacion_state_v2';
+const SUPABASE_SETTING_KEY = 'facturacion_state';
+const SUPABASE_SETTING_DESCRIPTION = 'Estado completo del modulo de facturacion: empresa, logo, firma, datos fiscales, diseno, facturas y recibos';
+
+function mergeFacturacionState(fallback: AppState, source: Partial<AppState>): AppState {
+  return {
+    ...fallback,
+    ...source,
+    empresaInfo: { ...fallback.empresaInfo, ...source.empresaInfo },
+    datosFiscales: { ...fallback.datosFiscales, ...source.datosFiscales },
+    disenoConfig: { ...fallback.disenoConfig, ...source.disenoConfig },
+    facturas: Array.isArray(source.facturas) ? source.facturas : fallback.facturas,
+    recibos: Array.isArray(source.recibos) ? source.recibos : fallback.recibos,
+    clientesGuardados: Array.isArray(source.clientesGuardados) ? source.clientesGuardados : fallback.clientesGuardados,
+    auditoria: Array.isArray(source.auditoria) ? source.auditoria : fallback.auditoria,
+    nextInvoiceNumber: Number(source.nextInvoiceNumber || fallback.nextInvoiceNumber),
+    nextReciboNumber: Number(source.nextReciboNumber || fallback.nextReciboNumber),
+  };
+}
+
+function loadStoredState(fallback: AppState): AppState {
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const rawState = window.localStorage.getItem(STORAGE_KEY);
+    if (!rawState) return fallback;
+
+    const parsed = JSON.parse(rawState) as Partial<AppState>;
+    return mergeFacturacionState(fallback, parsed);
+  } catch (error) {
+    console.warn('No se pudo cargar el estado de facturacion.', error);
+    return fallback;
+  }
+}
+
+function persistState(state: AppState) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn('No se pudo guardar el estado de facturacion.', error);
+  }
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>({
+  const hydratedFromSupabase = useRef(false);
+  const [state, setState] = useState<AppState>(() => loadStoredState({
     empresaInfo: {
-      nombreComercial: 'Empresa Sociedad Anónima',
-      razonSocial: 'Empresa S.A.',
-      rtn: '0000-0000-000000',
-      direccion: 'Boulevard Principal 123, Ciudad',
-      telefono: '+504 9999-0000',
-      email: 'facturas@empresa.com',
+      nombreComercial: 'ESMARK',
+      razonSocial: 'ESMARK',
+      rtn: '',
+      direccion: '',
+      telefono: '',
+      email: '',
     },
     datosFiscales: {
       cai: '000000-000000-000000-000000-000000-00',
       prefijo: '000-001-01',
       primerNumero: '00000001',
       ultimoNumero: '00000200',
-      siguienteFactura: '00000002',
-      fechaExpiracion: '15/07/2026',
-      lugarEmision: 'Oficina',
+      siguienteFactura: '00000001',
+      fechaExpiracion: '',
+      lugarEmision: '',
     },
-    facturas: [
-      {
-        id: '1',
-        tipo: 'proforma',
-        cliente: {
-          tipo: 'empresa',
-          nombre: 'Cliente (Honduras1)',
-          rtn: '0000-0000-000001',
-          email: 'cliente@email.com',
-          telefono: '+504 9999-0001',
-          direccion: 'Dirección del cliente',
-        },
-        productos: [
-          {
-            id: '1',
-            nombre: 'Producto Demo',
-            cantidad: 1,
-            precio: 80,
-            descuento: 0,
-            impuesto: 15,
-          },
-        ],
-        nota: '',
-        fechaCreacion: '2026-01-16T11:31:00',
-        subtotal: 80,
-        descuento: 0,
-        impuestos: 12,
-        envio: 0,
-        total: 92,
-      },
-      {
-        id: '2',
-        tipo: 'emitida',
-        numeroFactura: '000-001-01-00000001',
-        estado: 'Emitida',
-        cliente: {
-          tipo: 'empresa',
-          nombre: 'Cliente',
-          rtn: '0000-0000-000002',
-          email: 'cliente2@email.com',
-          telefono: '+504 9999-0002',
-          direccion: 'Dirección del cliente 2',
-        },
-        productos: [
-          {
-            id: '1',
-            nombre: 'Servicio Consultoría',
-            cantidad: 1,
-            precio: 100,
-            descuento: 0,
-            impuesto: 15,
-          },
-        ],
-        nota: '',
-        fechaCreacion: '2026-01-16T10:00:00',
-        fechaEmision: '2026-01-16',
-        subtotal: 100,
-        descuento: 0,
-        impuestos: 15,
-        envio: 0,
-        total: 115,
-      },
-    ],
-    nextInvoiceNumber: 2,
+    facturas: [],
+    nextInvoiceNumber: 1,
     nextReciboNumber: 1,
     recibos: [],
     clientesGuardados: [],
@@ -213,41 +204,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
       colorEtiquetas: '#DC3545',
       colorEncabezadoTabla: '#1F2D3D',
       colorTotales: '#1F2D3D',
+      colorFondoPagina: '#FFFFFF',
+      encabezadoModo: 'solido',
+      colorEncabezadoFinal: '#2563EB',
+      colorTextoEncabezado: '#FFFFFF',
+      radioBloques: 18,
+      altoEncabezado: 190,
       tamanoLogo: 30,
       fuenteTitulo: 10,
       fuenteTexto: 8,
       espaciado: 5,
     },
-    auditoria: [
-      {
-        id: '1',
-        fechaHora: '2026-01-16T11:31:00',
-        usuario: 'Olga Sarmiento',
-        accion: 'Creación',
-        historialDe: 'Proformas',
-        resumenCambios: 'Creada proforma para Cliente (Honduras1) por L92.00',
-        ip: '192.168.1.100',
-      },
-      {
-        id: '2',
-        fechaHora: '2026-01-16T10:00:00',
-        usuario: 'Olga Sarmiento',
-        accion: 'Creación',
-        historialDe: 'Facturas',
-        resumenCambios: 'Factura 000-001-01-00000001 emitida para Cliente por L115.00',
-        numeroFactura: '000-001-01-00000001',
-        ip: '192.168.1.100',
-      },
-    ],
-  });
+    auditoria: [],
+  }));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSupabaseState = async () => {
+      try {
+        const remoteState = await api.getAppSetting<Partial<AppState>>(SUPABASE_SETTING_KEY, {});
+        if (cancelled) return;
+
+        if (remoteState && Object.keys(remoteState).length > 0) {
+          setState((current) => mergeFacturacionState(current, remoteState));
+        } else {
+          api.saveAppSetting(SUPABASE_SETTING_KEY, state, SUPABASE_SETTING_DESCRIPTION).catch((error) => {
+            console.warn('No se pudo crear la configuracion inicial de facturacion en Supabase.', error);
+          });
+        }
+      } catch (error) {
+        console.warn('No se pudo cargar facturacion desde Supabase. Se usara la copia local.', error);
+      } finally {
+        hydratedFromSupabase.current = true;
+      }
+    };
+
+    loadSupabaseState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    persistState(state);
+  }, [state]);
+
+  useEffect(() => {
+    if (!hydratedFromSupabase.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      api.saveAppSetting(SUPABASE_SETTING_KEY, state, SUPABASE_SETTING_DESCRIPTION).catch((error) => {
+        console.warn('No se pudo guardar facturacion en Supabase. Se conserva copia local.', error);
+      });
+    }, 450);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [state]);
 
   const addAuditoriaEvento = (evento: Omit<AuditoriaEvento, 'id' | 'fechaHora' | 'usuario' | 'ip'>) => {
+    const currentUser = getCurrentUser();
     const newEvento: AuditoriaEvento = {
       ...evento,
       id: Date.now().toString(),
       fechaHora: new Date().toISOString(),
-      usuario: 'Olga Sarmiento',
-      ip: '192.168.1.100',
+      usuario: currentUser?.name || currentUser?.username || 'Sistema',
+      ip: 'online',
     };
     setState((prev) => ({
       ...prev,
@@ -278,24 +301,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addFactura = (factura: Omit<Factura, 'id' | 'fechaCreacion'>) => {
+    const expectedInvoiceNumber = factura.tipo === 'emitida'
+      ? (factura.numeroFactura || `${state.datosFiscales.prefijo}-${state.datosFiscales.siguienteFactura}`)
+      : factura.numeroFactura;
+
     const newFactura: Factura = {
       ...factura,
       id: Date.now().toString(),
       fechaCreacion: new Date().toISOString(),
     };
-    setState((prev) => ({
-      ...prev,
-      facturas: [...prev.facturas, newFactura],
-    }));
+    setState((prev) => {
+      if (factura.tipo === 'emitida') {
+        const currentNext = Number(prev.datosFiscales.siguienteFactura || prev.nextInvoiceNumber || 1);
+        const nextForState = Number.isFinite(currentNext) && currentNext > 0 ? currentNext : 1;
+
+        const invoiceNumber = newFactura.numeroFactura || `${prev.datosFiscales.prefijo}-${String(nextForState).padStart(8, '0')}`;
+
+        return {
+          ...prev,
+          facturas: [...prev.facturas, { ...newFactura, numeroFactura: invoiceNumber }],
+          nextInvoiceNumber: nextForState + 1,
+          datosFiscales: {
+            ...prev.datosFiscales,
+            siguienteFactura: String(nextForState + 1).padStart(8, '0'),
+          },
+        };
+      }
+
+      return {
+        ...prev,
+        facturas: [...prev.facturas, newFactura],
+      };
+    });
 
     addAuditoriaEvento({
       accion: 'Creación',
       historialDe: factura.tipo === 'proforma' ? 'Proformas' : 'Facturas',
       resumenCambios: factura.tipo === 'proforma'
         ? `Creada proforma para ${factura.cliente.nombre} por L${factura.total.toFixed(2)}`
-        : `Factura ${factura.numeroFactura} emitida para ${factura.cliente.nombre} por L${factura.total.toFixed(2)}`,
-      numeroFactura: factura.numeroFactura,
+        : `Factura ${expectedInvoiceNumber || 'N/A'} emitida para ${factura.cliente.nombre} por L${factura.total.toFixed(2)}`,
+      numeroFactura: expectedInvoiceNumber,
     });
+
+    void logActivity(
+      factura.tipo === 'proforma' ? 'proforma_creada' : 'factura_emitida',
+      factura.tipo === 'proforma'
+        ? `Proforma creada para ${factura.cliente.nombre}`
+        : `Factura ${expectedInvoiceNumber || 'N/A'} emitida para ${factura.cliente.nombre}`,
+      {
+        Documento: factura.tipo === 'proforma' ? 'Proforma' : 'Factura',
+        Numero: expectedInvoiceNumber || 'N/A',
+        Cliente: factura.cliente.nombre,
+        Total: `L ${factura.total.toFixed(2)}`,
+      }
+    );
   };
 
   const updateFactura = (id: string, updates: Partial<Factura>) => {
@@ -319,6 +378,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : `Anulada factura ${factura.numeroFactura}`,
           numeroFactura: factura.numeroFactura,
         });
+
+        void logActivity(
+          factura.tipo === 'proforma' ? 'proforma_eliminada' : 'factura_eliminada',
+          factura.tipo === 'proforma'
+            ? `Proforma eliminada para ${factura.cliente.nombre}`
+            : `Factura ${factura.numeroFactura || 'N/A'} anulada/eliminada`,
+          {
+            Documento: factura.tipo === 'proforma' ? 'Proforma' : 'Factura',
+            Numero: factura.numeroFactura || 'N/A',
+            Cliente: factura.cliente.nombre,
+            Total: `L ${Number(factura.total || 0).toFixed(2)}`,
+          }
+        );
       }
       return {
         ...prev,
@@ -327,7 +399,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const convertProformaToFactura = (id: string) => {
+  const convertProformaToFactura = (id: string, fechaEmision?: string) => {
     setState((prev) => {
       const factura = prev.facturas.find((f) => f.id === id);
       if (!factura || factura.tipo !== 'proforma') return prev;
@@ -340,6 +412,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         historialDe: 'Facturas',
         resumenCambios: `Proforma convertida a factura ${numeroFactura} para ${factura.cliente.nombre}`,
         numeroFactura,
+      });
+
+      void logActivity('proforma_convertida', `Proforma convertida a factura ${numeroFactura}`, {
+        Documento: 'Factura',
+        Numero: numeroFactura,
+        Cliente: factura.cliente.nombre,
+        Total: `L ${Number(factura.total || 0).toFixed(2)}`,
       });
 
       return {
@@ -356,7 +435,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 tipo: 'emitida' as const,
                 numeroFactura,
                 estado: 'Emitida' as const,
-                fechaEmision: new Date().toISOString().split('T')[0],
+                fechaEmision: fechaEmision || new Date().toISOString().split('T')[0],
               }
             : f
         ),
@@ -380,6 +459,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         resumenCambios: `Recibo ${numeroRecibo} emitido para ${reciboData.cliente.nombre} por L${reciboData.total.toFixed(2)}`,
       });
 
+      void logActivity('recibo_creado', `Recibo ${numeroRecibo} emitido para ${reciboData.cliente.nombre}`, {
+        Documento: 'Recibo',
+        Numero: numeroRecibo,
+        Cliente: reciboData.cliente.nombre,
+        Total: `L ${reciboData.total.toFixed(2)}`,
+      });
+
       return {
         ...prev,
         recibos: [...prev.recibos, newRecibo],
@@ -396,6 +482,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           accion: 'Eliminación',
           historialDe: 'Facturas',
           resumenCambios: `Recibo ${recibo.numeroRecibo} eliminado`,
+        });
+
+        void logActivity('recibo_eliminado', `Recibo ${recibo.numeroRecibo} eliminado`, {
+          Documento: 'Recibo',
+          Numero: recibo.numeroRecibo,
+          Cliente: recibo.cliente.nombre,
+          Total: `L ${Number(recibo.total || 0).toFixed(2)}`,
         });
       }
       return {

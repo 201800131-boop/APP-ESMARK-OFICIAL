@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp, Producto, Cliente, Factura } from './context/AppContext';
 import { GenerarRecibo } from './GenerarRecibo';
-import { generateFacturaPDF } from './utils/pdfGenerator';
+import { generateFacturaPDF } from './utils/facturaCartaPdf';
 
 function GenerarFactura() {
   const { state, addFactura, addCliente } = useApp();
@@ -31,6 +31,7 @@ function GenerarFactura() {
   const [nota, setNota] = useState('');
   const [fechaEmision, setFechaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [horaEmision, setHoraEmision] = useState(new Date().toTimeString().split(' ')[0].substring(0, 5));
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const addProductRow = () => {
     setProductRows([
@@ -51,6 +52,44 @@ function GenerarFactura() {
     ));
   };
 
+  const validProducts = productRows.filter((producto) =>
+    producto.nombre.trim() && Number(producto.cantidad) > 0 && Number(producto.precio) > 0
+  );
+
+  const showNotice = (type: 'success' | 'error', message: string) => {
+    setNotice({ type, message });
+  };
+
+  const validateFactura = (requireFiscalData: boolean) => {
+    if (!cliente.nombre.trim()) {
+      showNotice('error', 'El nombre del cliente es requerido.');
+      return false;
+    }
+
+    if (validProducts.length === 0) {
+      showNotice('error', 'Agregue al menos un producto o servicio con nombre, cantidad y precio.');
+      return false;
+    }
+
+    if (requireFiscalData) {
+      const missingFiscalData = [
+        state.datosFiscales.cai,
+        state.datosFiscales.prefijo,
+        state.datosFiscales.primerNumero,
+        state.datosFiscales.ultimoNumero,
+        state.datosFiscales.siguienteFactura,
+        state.datosFiscales.fechaExpiracion,
+      ].some((value) => !String(value || '').trim());
+
+      if (missingFiscalData) {
+        showNotice('error', 'Complete los datos fiscales antes de emitir una factura.');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const calculateRowTotal = (producto: Producto) => {
     const subtotal = producto.cantidad * producto.precio;
     const descuento = subtotal * (producto.descuento / 100);
@@ -60,9 +99,9 @@ function GenerarFactura() {
   };
 
   const calculateTotals = () => {
-    const subtotal = productRows.reduce((sum, p) => sum + (p.cantidad * p.precio), 0);
-    const descuento = productRows.reduce((sum, p) => sum + (p.cantidad * p.precio * p.descuento / 100), 0);
-    const impuestos = productRows.reduce((sum, p) => {
+    const subtotal = validProducts.reduce((sum, p) => sum + (p.cantidad * p.precio), 0);
+    const descuento = validProducts.reduce((sum, p) => sum + (p.cantidad * p.precio * p.descuento / 100), 0);
+    const impuestos = validProducts.reduce((sum, p) => {
       const afterDiscount = (p.cantidad * p.precio) - (p.cantidad * p.precio * p.descuento / 100);
       return sum + (afterDiscount * p.impuesto / 100);
     }, 0);
@@ -75,29 +114,48 @@ function GenerarFactura() {
   const totals = calculateTotals();
 
   const handleSaveProforma = () => {
+    if (!validateFactura(false)) return;
+
     addFactura({
       tipo: 'proforma',
       cliente,
-      productos: productRows,
+      productos: validProducts,
       nota,
       ...totals,
     });
-    alert('Proforma guardada exitosamente');
+    showNotice('success', 'Proforma guardada correctamente.');
     resetForm();
   };
 
   const handleSaveFactura = () => {
-    addFactura({
+    if (!validateFactura(true)) return;
+
+    const facturaEmitida: Omit<Factura, 'id' | 'fechaCreacion'> = {
       tipo: 'emitida',
       numeroFactura: `${state.datosFiscales.prefijo}-${state.datosFiscales.siguienteFactura}`,
       estado: 'Emitida',
       cliente,
-      productos: productRows,
+      productos: validProducts,
       nota,
       fechaEmision,
       ...totals,
-    });
-    alert('Factura emitida exitosamente');
+    };
+
+    addFactura(facturaEmitida);
+
+    const pdf = generateFacturaPDF(
+      {
+        ...facturaEmitida,
+        id: 'emitida-preview',
+        fechaCreacion: new Date().toISOString(),
+      },
+      state.empresaInfo,
+      state.datosFiscales,
+      state.disenoConfig
+    );
+    pdf.save(`factura-original-${facturaEmitida.numeroFactura}.pdf`);
+
+    showNotice('success', `Factura ${facturaEmitida.numeroFactura} emitida y descargada.`);
     resetForm();
   };
 
@@ -117,11 +175,13 @@ function GenerarFactura() {
   };
 
   const handleDownload = () => {
+    if (!validateFactura(false)) return;
+
     const previewFactura: Factura = {
       id: 'preview',
       tipo: 'proforma',
       cliente,
-      productos: productRows,
+      productos: validProducts,
       nota,
       fechaCreacion: new Date().toISOString(),
       fechaEmision,
@@ -138,7 +198,7 @@ function GenerarFactura() {
 
   const handleSaveNuevoCliente = () => {
     if (!nuevoCliente.nombre) {
-      alert('El nombre del cliente es requerido');
+      showNotice('error', 'El nombre del cliente es requerido.');
       return;
     }
     addCliente(nuevoCliente);
@@ -152,7 +212,7 @@ function GenerarFactura() {
       telefono: '',
       direccion: '',
     });
-    alert('Cliente guardado exitosamente');
+    showNotice('success', 'Cliente guardado correctamente.');
   };
 
   const handleSelectCliente = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -178,16 +238,16 @@ function GenerarFactura() {
 
   const handleSend = () => {
     if (!cliente.email) {
-      alert('Por favor ingrese un correo electrónico del cliente');
+      showNotice('error', 'Ingrese un correo electronico del cliente.');
       return;
     }
-    alert(`Factura enviada a ${cliente.email}`);
+    showNotice('success', `Factura lista para enviar a ${cliente.email}.`);
   };
 
   return (
     <div>
       <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-2 gap-8 mb-8">
+        <div className="grid grid-cols-1 gap-8 mb-8 lg:grid-cols-2">
           {/* Left Column - Company Info */}
           <div>
             <div className="mb-6">
@@ -220,9 +280,17 @@ function GenerarFactura() {
           </div>
 
           {/* Right Column - Company Logo */}
-          <div className="flex justify-end">
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-green-400 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold">Mi Empresa</span>
+          <div className="flex justify-center lg:justify-end">
+            <div className="facturacion-form-logo">
+              {state.empresaInfo.logo ? (
+                <img
+                  src={state.empresaInfo.logo}
+                  alt="Logo de la empresa"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span>Logo</span>
+              )}
             </div>
           </div>
         </div>
@@ -245,11 +313,11 @@ function GenerarFactura() {
               Seleccionar cliente
             </label>
             <select
-              value={cliente.nombre}
+              value={cliente.tipo === 'consumidor-final' ? 'consumidor-final' : cliente.nombre}
               onChange={handleSelectCliente}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1976D2]"
             >
-              <option value="Consumidor final">Consumidor final</option>
+              <option value="consumidor-final">Consumidor final</option>
               {state.clientesGuardados.map((c) => (
                 <option key={c.nombre} value={c.nombre}>
                   {c.nombre}
@@ -258,7 +326,7 @@ function GenerarFactura() {
             </select>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 gap-4 mb-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nombre
@@ -297,7 +365,7 @@ function GenerarFactura() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Teléfono
@@ -330,15 +398,15 @@ function GenerarFactura() {
           <h3 className="text-base font-semibold text-gray-900 mb-4">Productos / Servicios</h3>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[980px] w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-300">
-                  <th className="text-left py-2 px-2 font-medium text-gray-700">Producto/Servicio</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-700">Cantidad</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-700">Precio</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-700">Descuento %</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-700">Impuesto (ISV) %</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-700">Total</th>
+                  <th className="whitespace-nowrap text-left py-2 px-2 font-medium text-gray-700">Producto/Servicio</th>
+                  <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Cantidad</th>
+                  <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Precio</th>
+                  <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Descuento %</th>
+                  <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Impuesto (ISV) %</th>
+                  <th className="whitespace-nowrap text-center py-2 px-2 font-medium text-gray-700">Total</th>
                   <th className="w-10"></th>
                 </tr>
               </thead>
@@ -423,7 +491,7 @@ function GenerarFactura() {
         </div>
 
         {/* Totals Section */}
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Nota (opcional)
@@ -438,6 +506,17 @@ function GenerarFactura() {
           </div>
 
           <div className="space-y-2 text-sm">
+            {notice && (
+              <div
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+                  notice.type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                {notice.message}
+              </div>
+            )}
             <div className="flex justify-between py-2">
               <span className="text-gray-700">Subtotal:</span>
               <span className="font-medium">L{totals.subtotal.toFixed(2)}</span>
@@ -462,7 +541,7 @@ function GenerarFactura() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-3 mt-8">
+        <div className="mt-8 flex flex-wrap justify-end gap-3">
           <button
             onClick={handleSaveProforma}
             className="px-6 py-2.5 bg-[#1976D2] text-white rounded-lg hover:bg-[#1565C0] transition-colors"
@@ -605,34 +684,31 @@ export function CrearFactura() {
   ];
 
   return (
-    <div className="bg-white rounded-xl shadow-sm">
+    <div className="bg-white rounded-xl shadow-sm facturacion-create-screen">
       {/* Secondary Tabs */}
       <div className="border-b border-gray-200">
-        <div className="flex gap-8 px-8 pt-6">
+        <div className="facturacion-subtabs-buttons flex gap-3 px-6 pt-4 pb-3 md:px-8 md:pt-6">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                pb-4 text-sm font-medium transition-all relative
+                min-w-[120px] rounded-lg px-4 py-2 text-center text-sm font-semibold transition-all
                 ${
                   activeTab === tab.id
-                    ? 'text-[#1976D2]'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-[#1976D2] text-white shadow-sm'
+                    : 'bg-[#F3F4F6] text-[#374151] hover:bg-[#E5E7EB]'
                 }
               `}
             >
               {tab.label}
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1976D2]" />
-              )}
             </button>
           ))}
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="p-8">
+      <div className="facturacion-subtab-content p-8">
         {activeTab === 'factura' && <GenerarFactura />}
         {activeTab === 'recibo' && <GenerarRecibo />}
       </div>

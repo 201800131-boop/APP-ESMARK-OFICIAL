@@ -1,0 +1,211 @@
+.animated-order-list {
+  display: flex;
+  min-height: 194px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.animated-order-list__viewport {
+  position: relative;
+  height: 146px;
+  overflow: hidden;
+  padding: 3px;
+}
+
+.animated-order-list__items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.animated-order-list__item {
+  position: relative;
+  display: grid;
+  min-height: 65px;
+  width: 100%;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 9px 10px;
+  text-align: left;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.02),
+    0 3px 8px rgba(15, 23, 42, 0.05),
+    0 12px 25px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+}
+
+.animated-order-list__item::before {
+  position: absolute;
+  inset: 9px auto 9px 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--animated-order-accent);
+  content: '';
+}
+
+.animated-order-list__item:focus-visible {
+  outline: 2px solid var(--animated-order-accent);
+  outline-offset: 2px;
+}
+
+.animated-order-list__icon,
+.animated-order-list__empty-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--animated-order-soft);
+  color: var(--animated-order-accent);
+}
+
+.animated-order-list__icon {
+  width: 40px;
+  height: 40px;
+}
+
+.animated-order-list__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.animated-order-list__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.animated-order-list__copy strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.76rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animated-order-list__copy span {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.animated-order-list__time {
+  max-width: 90px;
+  border-radius: 999px;
+  background: var(--animated-order-soft);
+  padding: 4px 7px;
+  color: var(--animated-order-text);
+  font-size: 0.61rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.animated-order-list__fade {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 20px;
+  background: linear-gradient(to top, var(--animated-order-fade), transparent);
+  pointer-events: none;
+}
+
+.animated-order-list__footer {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.animated-order-list__footer > span {
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.animated-order-list__footer [data-slot='button'] {
+  height: 30px;
+  padding-inline: 9px;
+  color: var(--animated-order-text);
+  font-size: 0.68rem;
+}
+
+.animated-order-list__empty {
+  display: flex;
+  height: 194px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px dashed color-mix(in srgb, var(--animated-order-accent) 28%, transparent);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #64748b;
+  text-align: center;
+}
+
+.animated-order-list__empty-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.animated-order-list__empty-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.animated-order-list__empty p {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.animated-order-list--danger {
+  --animated-order-accent: #ef4444;
+  --animated-order-soft: #fee2e2;
+  --animated-order-text: #b91c1c;
+  --animated-order-fade: #fff7ed;
+}
+
+.animated-order-list--warning {
+  --animated-order-accent: #f59e0b;
+  --animated-order-soft: #fef3c7;
+  --animated-order-text: #b45309;
+  --animated-order-fade: #fffbeb;
+}
+
+.animated-order-list--success {
+  --animated-order-accent: #22c55e;
+  --animated-order-soft: #dcfce7;
+  --animated-order-text: #15803d;
+  --animated-order-fade: #ecfdf5;
+}
+
+@media (max-width: 1180px) {
+  .animated-order-list__item {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .animated-order-list__icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .animated-order-list__time {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-order-list__item {
+    transition: none;
+  }
+}

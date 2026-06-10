@@ -1,0 +1,4 @@
+-- Placeholder de migracion remota existente.
+-- Esta version ya esta registrada en Supabase remoto.
+-- Se conserva localmente para alinear el historial antes de aplicar
+-- nuevas migraciones desde este checkout.
