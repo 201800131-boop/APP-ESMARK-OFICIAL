@@ -1,18 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from './context/AppContext';
-import { generateFacturaPDF } from './utils/pdfGenerator';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Copy,
+  Download,
+  Eye,
+  MoreHorizontal,
+  RefreshCw,
+} from 'lucide-react';
+import { Factura, useApp } from './context/AppContext';
+import { generateFacturaPDF } from './utils/facturaCartaPdf';
 
 export function FacturasEmitidas() {
   const { state, deleteFactura, addFactura } = useApp();
   const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(50);
+  const [perPage, setPerPage] = useState(30);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.menu-container') && !target.closest('button')) {
+      if (!target.closest('.facturacion-actions-menu-wrap') && !target.closest('.facturacion-floating-actions-menu')) {
         setOpenMenuId(null);
         setMenuPosition(null);
       }
@@ -20,60 +35,79 @@ export function FacturasEmitidas() {
 
     if (openMenuId) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [openMenuId]);
 
-  const facturas = state.facturas.filter(f => f.tipo === 'emitida');
+  const facturas = state.facturas.filter((factura) => factura.tipo === 'emitida');
   const totalFacturas = facturas.length;
-  const totalPages = Math.ceil(totalFacturas / perPage);
+  const totalPages = Math.max(1, Math.ceil(totalFacturas / perPage));
 
   const startIndex = (currentPage - 1) * perPage;
   const endIndex = startIndex + perPage;
   const currentFacturas = facturas.slice(startIndex, endIndex);
 
-  const toggleMenu = (id: string, event: React.MouseEvent<HTMLButtonElement>) => {
+  const formatMoney = (value: number) =>
+    `L${Number(value || 0).toLocaleString('es-HN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-HN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const openActionMenu = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
     if (openMenuId === id) {
       setOpenMenuId(null);
       setMenuPosition(null);
-    } else {
-      const button = event.currentTarget;
-      const rect = button.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.bottom + 8,
-        left: rect.right - 256, // 256px es el ancho del menú (w-64)
-      });
-      setOpenMenuId(id);
+      return;
     }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 232;
+    const menuHeight = 226;
+    const left = Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12));
+    const top = Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - menuHeight - 12));
+    setOpenMenuId(id);
+    setMenuPosition({ top, left });
   };
 
   const handleView = (id: string) => {
+    const factura = facturas.find((item) => item.id === id);
+    if (factura) setSelectedFactura(factura);
     setOpenMenuId(null);
-    alert(`Ver detalles de factura ID: ${id}`);
+    setMenuPosition(null);
   };
 
   const handleDownloadOriginal = (id: string) => {
-    const factura = facturas.find(f => f.id === id);
+    const factura = facturas.find((item) => item.id === id);
     if (!factura) return;
 
     const pdf = generateFacturaPDF(factura, state.empresaInfo, state.datosFiscales, state.disenoConfig);
     pdf.save(`factura-original-${factura.numeroFactura}.pdf`);
     setOpenMenuId(null);
+    setMenuPosition(null);
   };
 
   const handleDownloadCopiaEmisor = (id: string) => {
-    const factura = facturas.find(f => f.id === id);
+    const factura = facturas.find((item) => item.id === id);
     if (!factura) return;
 
     const pdf = generateFacturaPDF(factura, state.empresaInfo, state.datosFiscales, state.disenoConfig);
     pdf.save(`factura-copia-emisor-${factura.numeroFactura}.pdf`);
     setOpenMenuId(null);
+    setMenuPosition(null);
   };
 
   const handleDownloadAmbas = (id: string) => {
-    const factura = facturas.find(f => f.id === id);
+    const factura = facturas.find((item) => item.id === id);
     if (!factura) return;
 
     const pdfOriginal = generateFacturaPDF(factura, state.empresaInfo, state.datosFiscales, state.disenoConfig);
@@ -85,200 +119,220 @@ export function FacturasEmitidas() {
     }, 500);
 
     setOpenMenuId(null);
+    setMenuPosition(null);
   };
 
   const handleClonar = (id: string) => {
-    const factura = facturas.find(f => f.id === id);
+    const factura = facturas.find((item) => item.id === id);
     if (!factura) return;
 
-    const nuevaFactura = {
-      tipo: 'emitida' as const,
+    addFactura({
+      tipo: 'emitida',
       numeroFactura: `${state.datosFiscales.prefijo}-${String(state.nextInvoiceNumber).padStart(8, '0')}`,
       cliente: factura.cliente,
       productos: factura.productos,
       nota: factura.nota,
-      estado: 'Emitida' as const,
+      estado: 'Emitida',
       fechaEmision: new Date().toISOString().split('T')[0],
       subtotal: factura.subtotal,
       descuento: factura.descuento,
       impuestos: factura.impuestos,
       envio: factura.envio,
       total: factura.total,
-    };
+    });
 
-    addFactura(nuevaFactura);
     setOpenMenuId(null);
-    alert('Factura clonada exitosamente');
+    setMenuPosition(null);
+    setNotice('Factura clonada correctamente.');
   };
 
   const handleDelete = (id: string) => {
     setOpenMenuId(null);
-    if (confirm('¿Está seguro de que desea anular esta factura?')) {
+    setMenuPosition(null);
+    if (confirm('Seguro que desea anular esta factura?')) {
       deleteFactura(id);
-      alert('Factura anulada exitosamente');
+      setNotice('Factura anulada correctamente.');
     }
   };
 
   const handleRefresh = () => {
-    alert('Lista de facturas actualizada');
+    setNotice('Lista actualizada.');
   };
 
   const handleDownloadReport = () => {
-    alert('Descargando reporte de facturas emitidas...');
-  };
+    const rows = facturas.map((factura) => [
+      factura.numeroFactura || '',
+      factura.cliente.nombre || '',
+      factura.cliente.rtn || '',
+      formatDate(factura.fechaEmision),
+      factura.estado || '',
+      factura.productos.length,
+      factura.subtotal.toFixed(2),
+      factura.descuento.toFixed(2),
+      factura.impuestos.toFixed(2),
+      factura.total.toFixed(2),
+    ]);
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-HN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const header = ['Numero', 'Cliente', 'RTN', 'Fecha', 'Estado', 'Articulos', 'Subtotal', 'Descuento', 'Impuestos', 'Total'];
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reporte-facturas-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice('Reporte descargado correctamente.');
   };
 
   const Pagination = () => (
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-600">Mostrar:</span>
+    <div className="facturacion-pagination facturacion-proforma-pagination">
+      <span className="facturacion-per-page-label">Mostrar:</span>
       <select
         value={perPage}
-        onChange={(e) => {
-          setPerPage(Number(e.target.value));
+        onChange={(event) => {
+          setPerPage(Number(event.target.value));
           setCurrentPage(1);
         }}
-        className="px-3 py-1 border border-gray-300 rounded text-sm"
       >
+        <option value={30}>30</option>
         <option value={50}>50</option>
         <option value={100}>100</option>
         <option value={200}>200</option>
       </select>
-      <button
-        onClick={() => setCurrentPage(1)}
-        disabled={currentPage === 1}
-        className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
-        </svg>
+      <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
+        <ChevronsLeft size={16} />
       </button>
-      <button
-        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-        disabled={currentPage === 1}
-        className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
+      <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
+        <ChevronLeft size={16} />
       </button>
-      <span className="px-3 py-1 bg-[#1976D2] text-white rounded text-sm">{currentPage}</span>
-      <button
-        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-        disabled={currentPage >= totalPages}
-        className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+      <span className="facturacion-page-number">{currentPage}</span>
+      <button onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages}>
+        <ChevronRight size={16} />
       </button>
-      <button
-        onClick={() => setCurrentPage(totalPages)}
-        disabled={currentPage >= totalPages}
-        className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
-        </svg>
+      <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>
+        <ChevronsRight size={16} />
       </button>
     </div>
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-8">
-      <div className="mb-6 flex justify-between items-center">
-        <h2 className="text-2xl font-semibold text-gray-900">
-          Facturas emitidas
-        </h2>
-        <button
-          onClick={handleDownloadReport}
-          className="px-4 py-2 bg-[#1976D2] text-white rounded-lg text-sm hover:bg-[#1565C0] transition-colors"
-        >
+    <div className="facturacion-list-page facturacion-proforma-page facturacion-emitidas-page">
+      <div className="facturacion-proforma-topline">
+        <div className="facturacion-proforma-count">
+          <p>Mostrando pagina {currentPage} de {totalPages}</p>
+          <strong>Total de facturas: {totalFacturas}</strong>
+        </div>
+
+        <div className="facturacion-proforma-toolbar">
+          <button type="button" className="facturacion-refresh-btn" onClick={handleRefresh}>
+            <RefreshCw size={16} />
+            Actualizar lista
+          </button>
+          <Pagination />
+        </div>
+      </div>
+
+      <div className="facturacion-proforma-titlebar">
+        <h2>Facturas emitidas</h2>
+        <button type="button" onClick={handleDownloadReport} className="facturacion-primary-btn">
           Descargar reporte
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="mb-6">
-        <p className="text-sm text-gray-600">
-          Mostrando {startIndex + 1} a {Math.min(endIndex, totalFacturas)} de {totalFacturas}<br />
-          Total de facturas: {totalFacturas}
-        </p>
-      </div>
+      {notice && (
+        <div className="facturacion-inline-notice">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)}>
+            Cerrar
+          </button>
+        </div>
+      )}
 
-      {/* Pagination Top */}
-      <div className="flex justify-between items-center mb-4">
-        <button
-          onClick={handleRefresh}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50"
-        >
-          Actualizar lista
-        </button>
-        <Pagination />
-      </div>
-
-      {/* Table */}
-      <div className="overflow-visible">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+      <div className="facturacion-proforma-table-wrap">
+        <table className="facturacion-proforma-table facturacion-emitidas-table w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#1976D2] border-b-2 border-gray-300">
-              <th className="text-left py-3 px-4 font-medium text-white border-r border-blue-800">Cliente</th>
-              <th className="text-left py-3 px-4 font-medium text-white border-r border-blue-800">Número de factura</th>
-              <th className="text-left py-3 px-4 font-medium text-white border-r border-blue-800">Estado</th>
-              <th className="text-left py-3 px-4 font-medium text-white border-r border-blue-800">Fecha de emisión</th>
-              <th className="text-center py-3 px-4 font-medium text-white border-r border-blue-800">Cant. de artículos</th>
-              <th className="text-right py-3 px-4 font-medium text-white border-r border-blue-800">Subtotal</th>
-              <th className="text-right py-3 px-4 font-medium text-white border-r border-blue-800">Descuento</th>
-              <th className="text-right py-3 px-4 font-medium text-white border-r border-blue-800">Impuestos</th>
-              <th className="text-right py-3 px-4 font-medium text-white border-r border-blue-800">Envío</th>
-              <th className="text-right py-3 px-4 font-medium text-white border-r border-blue-800">Total</th>
-              <th className="text-center py-3 px-4 font-medium text-white">Acciones</th>
+            <tr>
+              <th>Cliente</th>
+              <th>Numero factura</th>
+              <th>Estado</th>
+              <th>Fecha</th>
+              <th>Art.</th>
+              <th>Subtotal</th>
+              <th>Desc.</th>
+              <th>Imp.</th>
+              <th>Envio</th>
+              <th>Total</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {currentFacturas.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-gray-500 border-b border-gray-200">
-                  No hay facturas emitidas
-                </td>
+              <tr className="facturacion-proforma-empty">
+                <td colSpan={11}>No hay facturas emitidas</td>
               </tr>
             ) : (
               currentFacturas.map((factura) => (
-                <tr key={factura.id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="py-4 px-4 text-gray-900 border-r border-gray-200">{factura.cliente.nombre}</td>
-                  <td className="py-4 px-4 text-gray-700 border-r border-gray-200">{factura.numeroFactura}</td>
-                  <td className="py-4 px-4 border-r border-gray-200">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {factura.estado}
-                    </span>
+                <tr key={factura.id}>
+                  <td>
+                    <div className="facturacion-client-name">{factura.cliente.nombre}</div>
+                    {factura.cliente.rtn && <div className="facturacion-client-rtn">{factura.cliente.rtn}</div>}
                   </td>
-                  <td className="py-4 px-4 text-gray-700 border-r border-gray-200">{formatDate(factura.fechaEmision)}</td>
-                  <td className="py-4 px-4 text-center text-gray-900 border-r border-gray-200">{factura.productos.length}</td>
-                  <td className="py-4 px-4 text-right text-gray-900 border-r border-gray-200">L{factura.subtotal.toFixed(2)}</td>
-                  <td className="py-4 px-4 text-right text-gray-900 border-r border-gray-200">L{factura.descuento.toFixed(2)}</td>
-                  <td className="py-4 px-4 text-right text-gray-900 border-r border-gray-200">L{factura.impuestos.toFixed(2)}</td>
-                  <td className="py-4 px-4 text-right text-gray-900 border-r border-gray-200">L{factura.envio.toFixed(2)}</td>
-                  <td className="py-4 px-4 text-right font-medium text-gray-900 border-r border-gray-200">L{factura.total.toFixed(2)}</td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center justify-center">
+                  <td>{factura.numeroFactura}</td>
+                  <td>
+                    <span className="facturacion-status-pill">{factura.estado || 'Emitida'}</span>
+                  </td>
+                  <td>{formatDate(factura.fechaEmision)}</td>
+                  <td className="facturacion-center">{factura.productos.length}</td>
+                  <td className="facturacion-money">{formatMoney(factura.subtotal)}</td>
+                  <td className="facturacion-money">{formatMoney(factura.descuento)}</td>
+                  <td className="facturacion-money">{formatMoney(factura.impuestos)}</td>
+                  <td className="facturacion-money">{formatMoney(factura.envio)}</td>
+                  <td className="facturacion-money facturacion-total">{formatMoney(factura.total)}</td>
+                  <td>
+                    <div className="facturacion-actions-menu-wrap">
                       <button
-                        onClick={(e) => toggleMenu(factura.id, e)}
-                        className="px-4 py-2 border-2 border-gray-400 text-gray-700 rounded-full hover:bg-gray-50 transition-colors font-medium text-sm flex items-center gap-2"
+                        type="button"
+                        onClick={(event) => openActionMenu(event, factura.id)}
+                        className={`facturacion-action-btn facturacion-menu-trigger ${openMenuId === factura.id ? 'is-open' : ''}`}
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-                        </svg>
+                        <MoreHorizontal size={15} />
                         Acciones
                       </button>
+
+                      {openMenuId === factura.id && menuPosition && createPortal(
+                        <div className="facturacion-emitidas-menu facturacion-floating-actions-menu" style={{ top: menuPosition.top, left: menuPosition.left }}>
+                          <button type="button" onClick={() => handleView(factura.id)}>
+                            <Eye size={15} />
+                            Ver factura
+                          </button>
+                          <button type="button" onClick={() => handleDownloadOriginal(factura.id)}>
+                            <Download size={15} />
+                            Descargar original
+                          </button>
+                          <button type="button" onClick={() => handleDownloadCopiaEmisor(factura.id)}>
+                            <Download size={15} />
+                            Descargar copia emisor
+                          </button>
+                          <button type="button" onClick={() => handleDownloadAmbas(factura.id)}>
+                            <Download size={15} />
+                            Descargar ambas
+                          </button>
+                          <button type="button" onClick={() => handleClonar(factura.id)}>
+                            <Copy size={15} />
+                            Clonar factura
+                          </button>
+                          <button type="button" onClick={() => handleDelete(factura.id)} className="is-danger">
+                            <Ban size={15} />
+                            Anular factura
+                          </button>
+                        </div>
+                        ,
+                        document.body
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -286,79 +340,84 @@ export function FacturasEmitidas() {
             )}
           </tbody>
         </table>
-        </div>
       </div>
 
-      {/* Pagination Bottom */}
-      <div className="flex justify-end mt-4">
+      <div className="facturacion-proforma-bottom">
         <Pagination />
       </div>
 
-      {/* Menú flotante */}
-      {openMenuId && menuPosition && (
-        <div
-          className="menu-container fixed w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-[9999]"
-          style={{
-            top: `${menuPosition.top}px`,
-            left: `${menuPosition.left}px`,
-          }}
-        >
-          <div className="py-2">
-            <button
-              onClick={() => handleView(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm"
-            >
-              <svg className="w-5 h-5 text-[#1976D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              <span className="text-gray-700">Ver factura</span>
-            </button>
-            <button
-              onClick={() => handleDownloadOriginal(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm"
-            >
-              <svg className="w-5 h-5 text-[#1976D2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-              <span className="text-gray-700">Descargar factura original</span>
-            </button>
-            <button
-              onClick={() => handleDownloadCopiaEmisor(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm"
-            >
-              <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-              <span className="text-gray-700">Descargar copia de emisor</span>
-            </button>
-            <button
-              onClick={() => handleDownloadAmbas(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm"
-            >
-              <svg className="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-              <span className="text-gray-700">Descargar ambas copias</span>
-            </button>
-            <button
-              onClick={() => handleClonar(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm"
-            >
-              <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              <span className="text-gray-700">Clonar factura</span>
-            </button>
-            <button
-              onClick={() => handleDelete(openMenuId)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm border-t border-gray-200"
-            >
-              <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              <span className="text-gray-700">Anular Factura</span>
-            </button>
+      {selectedFactura && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 px-4">
+          <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Factura {selectedFactura.numeroFactura}</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  {selectedFactura.cliente.nombre} - {formatDate(selectedFactura.fechaEmision)}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedFactura(null)}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-gray-200 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">RTN</p>
+                <p className="mt-1 font-medium text-gray-900">{selectedFactura.cliente.rtn || 'Consumidor final'}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Estado</p>
+                <p className="mt-1 font-medium text-gray-900">{selectedFactura.estado || 'Emitida'}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Total</p>
+                <p className="mt-1 font-semibold text-gray-900">{formatMoney(selectedFactura.total)}</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-[760px] w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Producto / Servicio</th>
+                    <th className="px-4 py-3 text-center font-semibold text-gray-700">Cant.</th>
+                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Precio</th>
+                    <th className="px-4 py-3 text-center font-semibold text-gray-700">Desc.</th>
+                    <th className="px-4 py-3 text-center font-semibold text-gray-700">ISV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedFactura.productos.map((producto) => (
+                    <tr key={producto.id} className="border-t border-gray-200">
+                      <td className="px-4 py-3 text-gray-900">{producto.nombre}</td>
+                      <td className="px-4 py-3 text-center text-gray-700">{producto.cantidad}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{formatMoney(producto.precio)}</td>
+                      <td className="px-4 py-3 text-center text-gray-700">{producto.descuento}%</td>
+                      <td className="px-4 py-3 text-center text-gray-700">{producto.impuesto}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => handleDownloadOriginal(selectedFactura.id)}
+                className="rounded-lg bg-[#101827] px-4 py-2 text-sm font-medium text-white hover:bg-[#1e293b]"
+              >
+                Descargar original
+              </button>
+              <button
+                onClick={() => handleDownloadCopiaEmisor(selectedFactura.id)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Descargar copia
+              </button>
+            </div>
           </div>
         </div>
       )}
